@@ -27,7 +27,7 @@ jobs:
         run: |
           old=${{ steps.get_tag.outputs.latest_tag }}
           if [ -z "$old" ]; then
-            new="v1.0.0"
+            new="v0.1.0"
           else
             IFS='.' read -r major minor patch <<< "${old#v}"
             patch=$((patch + 1))
@@ -39,8 +39,3 @@ jobs:
           git config user.email "github-actions@github.com"
           git tag $new
           git push origin $new
-
-      - name: Output new tag
-        run: |
-          echo "Created tag: ${{ steps.new_tag.outputs.tag }}"
-      
