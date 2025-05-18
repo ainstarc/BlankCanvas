@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">BlankCanvas</string>
+
+    <string-array name="task_types">
+        <item>GROUP</item>
+        <item>LIST</item>
+        <item>TASK</item>
+        <item>SUBTASK</item>
+    </string-array>
+
+</resources>
