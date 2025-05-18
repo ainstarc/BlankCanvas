@@ -1,0 +1,46 @@
+name: Auto Increment Version Tag
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Important: fetch all tags
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          echo "Latest tag: $latest_tag"
+          echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
+
+      - name: Bump patch version and create new tag
+        id: new_tag
+        run: |
+          old=${{ steps.get_tag.outputs.latest_tag }}
+          if [ -z "$old" ]; then
+            new="v1.0.0"
+          else
+            IFS='.' read -r major minor patch <<< "${old#v}"
+            patch=$((patch + 1))
+            new="v${major}.${minor}.${patch}"
+          fi
+          echo "New tag: $new"
+          echo "tag=$new" >> $GITHUB_OUTPUT
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag $new
+          git push origin $new
+
+      - name: Output new tag
+        run: |
+          echo "Created tag: ${{ steps.new_tag.outputs.tag }}"
+      
