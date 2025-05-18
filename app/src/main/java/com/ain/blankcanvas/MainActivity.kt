@@ -3,35 +3,33 @@ package com.ain.blankcanvas
 import android.app.AlertDialog
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.Spinner
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.ain.blankcanvas.TaskDatabaseHelper.Companion.COLUMN_ID
-import com.ain.blankcanvas.TaskDatabaseHelper.Companion.TABLE_NAME
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 
 class MainActivity : AppCompatActivity() {
 
-    lateinit var taskTree: List<TaskNode>
-    lateinit var adapter: TaskAdapter
+    private lateinit var taskTree: List<TaskNode>
+    private lateinit var adapter: TaskAdapter
     private lateinit var dbHelper: TaskDatabaseHelper
     private var selectedParentId: Long? = null
 
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        supportActionBar?.hide()
         setContentView(R.layout.activity_main)
 
         dbHelper = TaskDatabaseHelper(this)
-
-        // Load tasks from DB
         val tasks = dbHelper.getAllTasks()
         taskTree = buildTaskTree(tasks)
         val displayList = flattenTaskTree(taskTree)
 
         val recyclerView = findViewById<RecyclerView>(R.id.taskRecyclerView)
+        recyclerView.layoutManager = LinearLayoutManager(this)
         adapter = TaskAdapter(
             tasks = taskTree,
             items = displayList,
@@ -40,102 +38,106 @@ class MainActivity : AppCompatActivity() {
                 adapter.updateData(updatedList)
             },
             onTaskLongClick = { task ->
-                // Show dialog with Add Child or Delete option
-                val options = arrayOf("Add Child Task", "Delete Task")
-                AlertDialog.Builder(this)
-                    .setTitle("Select Action")
-                    .setItems(options) { dialog, which ->
-                        when (which) {
-                            0 -> { // Add child
-                                selectedParentId = task.id
-                                showAddTaskDialog()
-                            }
-
-                            1 -> { // Delete task
-                                dbHelper.deleteTask(task.id)
-                                // Refresh UI
-                                val tasks = dbHelper.getAllTasks()
-                                taskTree = buildTaskTree(tasks)
-                                val displayList = flattenTaskTree(taskTree)
-                                adapter.updateData(displayList)
-                            }
-                        }
-                    }
-                    .show()
+                showTaskOptionsDialog(task.id)
             }
         )
-
-
-
         recyclerView.adapter = adapter
 
         val fab = findViewById<FloatingActionButton>(R.id.addTaskFab)
-        fab.setOnClickListener {
-            showAddTaskDialog()
-        }
-
+        fab.setOnClickListener { showAddTaskDialog() }
     }
 
+    private fun showTaskOptionsDialog(taskId: Long) {
+        val options = arrayOf("Add Child Task", "Delete Task")
+        AlertDialog.Builder(this)
+            .setTitle("Select Action")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        selectedParentId = taskId
+                        showAddTaskDialog()
+                    }
 
-    private fun buildTaskTree(tasks: List<TaskItem>): List<TaskNode> {
-        val nodeMap = mutableMapOf<Long, TaskNode>()
-        val roots = mutableListOf<TaskNode>()
-
-        // Create nodes for all tasks
-        for (task in tasks) {
-            nodeMap[task.id] = TaskNode(task)
-        }
-
-        // Link children to parents
-        for (task in tasks) {
-            val node = nodeMap[task.id]!!
-            val parentId = task.parentId
-            if (parentId == null) {
-                // Root node
-                roots.add(node)
-            } else {
-                nodeMap[parentId]?.children?.add(node)
-            }
-        }
-        return roots
+                    1 -> {
+                        dbHelper.deleteTask(taskId)
+                        reloadTasks()
+                    }
+                }
+            }.show()
     }
 
     private fun showAddTaskDialog() {
+        // Inflate dialog layout
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_task, null)
+
         val titleInput = dialogView.findViewById<EditText>(R.id.taskTitleInput)
         val typeSpinner = dialogView.findViewById<Spinner>(R.id.taskTypeSpinner)
         val descriptionInput = dialogView.findViewById<EditText>(R.id.taskDescriptionInput)
-        val description = descriptionInput.text.toString()
 
+        // Setup spinner adapter
+        val spinnerAdapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            ItemType.values().map { it.name }
+        )
+        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        typeSpinner.adapter = spinnerAdapter
 
-        val dialog = AlertDialog.Builder(this)
+        // Build and show the dialog
+        AlertDialog.Builder(this)
             .setTitle("Add Task")
             .setView(dialogView)
             .setPositiveButton("Add") { _, _ ->
                 val title = titleInput.text.toString()
-                val description =
-                    descriptionInput?.text.toString()  // if you have description input
-                val type = ItemType.valueOf(typeSpinner.selectedItem.toString())
+                val description = descriptionInput.text.toString()
+                val selectedType = typeSpinner.selectedItem
 
-                val parentId = selectedParentId ?: 0L  // Use selectedParentId or 0 if null
+                if (selectedType != null) {
+                    val type = ItemType.valueOf(selectedType.toString())
+                    val parentId = selectedParentId ?: 0L
 
-                dbHelper.insertTask(parentId, type, title, description)
+                    dbHelper.insertTask(parentId, type, title, description)
+                    selectedParentId = null
 
-                // Reset parent selection after adding task
-                selectedParentId = null
-
-                // Refresh UI
-                val tasks = dbHelper.getAllTasks()
-                taskTree = buildTaskTree(tasks)
-                val displayList = flattenTaskTree(taskTree)
-                adapter.updateData(displayList)
+                    val tasks = dbHelper.getAllTasks()
+                    taskTree = buildTaskTree(tasks)
+                    val displayList = flattenTaskTree(taskTree)
+                    adapter.updateData(displayList)
+                } else {
+                    Toast.makeText(this, "Please select a task type.", Toast.LENGTH_SHORT).show()
+                }
             }
-
             .setNegativeButton("Cancel", null)
-            .create()
-
-        dialog.show()
+            .show()
     }
 
 
+    private fun reloadTasks() {
+        val tasks = dbHelper.getAllTasks()
+        taskTree = buildTaskTree(tasks)
+        val displayList = flattenTaskTree(taskTree)
+        adapter.updateData(displayList)
+    }
+
+    private fun buildTaskTree(tasks: List<TaskItem>): List<TaskNode> {
+        val map = tasks.associateBy { it.id }.mapValues { TaskNode(it.value) }.toMutableMap()
+        val roots = mutableListOf<TaskNode>()
+        map.values.forEach { node ->
+            val parent = node.task.parentId?.let { map[it] }
+            if (parent != null) parent.children.add(node)
+            else roots.add(node)
+        }
+        return roots
+    }
+
+    private fun flattenTaskTree(nodes: List<TaskNode>, depth: Int = 0): List<DisplayTask> {
+        val result = mutableListOf<DisplayTask>()
+        for (node in nodes) {
+            result.add(DisplayTask(node.task, depth, node.expanded))
+            if (node.expanded) {
+                result.addAll(flattenTaskTree(node.children, depth + 1))
+            }
+        }
+        return result
+    }
 }

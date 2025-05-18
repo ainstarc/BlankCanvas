@@ -1,14 +1,13 @@
 package com.ain.blankcanvas
 
 enum class ItemType {
-    GROUP, LIST, TASK, SUBTASK
+    GROUP, TASK
 }
 
 data class TaskItem(
-    val id: Long = 0,
-    val parentId: Long? = null,
+    val id: Long,
+    val parentId: Long?,
     val type: ItemType,
     val title: String,
-    val description: String? = null,
-    val children: MutableList<TaskItem> = mutableListOf()
+    val description: String?
 )
